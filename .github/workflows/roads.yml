@@ -1,0 +1,51 @@
+# Charge les routes OpenStreetMap du Sénégal dans Supabase (table public.roads).
+# Elles servent à vérifier automatiquement que les relevés sont bien sur une route.
+# Tourne le 2 de chaque mois (les routes OSM évoluent) + bouton « Run workflow ».
+#
+# Secret à créer dans GitHub : Settings → Secrets and variables → Actions
+#   SUPABASE_DB_URL = chaîne de connexion « Session pooler » de Supabase
+#   (bouton Connect → Session pooler), avec le mot de passe de la base à la place
+#   de [YOUR-PASSWORD]. Ex. :
+#   postgresql://postgres.xxxx:MOTDEPASSE@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
+name: Routes OSM vers Supabase
+
+on:
+  schedule:
+    - cron: '41 3 2 * *'
+  workflow_dispatch:
+
+jobs:
+  roads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PBF_URL: https://download.geofabrik.de/africa/senegal-and-gambia-latest.osm.pbf
+      # Types de routes gardés (les rues résidentielles sont exclues pour limiter la taille)
+      HIGHWAYS: motorway,motorway_link,trunk,trunk_link,primary,primary_link,secondary,secondary_link,tertiary,tertiary_link,unclassified,track
+    steps:
+      - name: Installer les outils
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q osmium-tool gdal-bin postgresql-client
+
+      - name: Télécharger la carte OSM du Sénégal
+        run: |
+          curl -fsSL --retry 3 -o sn.osm.pbf "$PBF_URL"
+          ls -lh sn.osm.pbf
+
+      - name: Extraire les routes
+        run: |
+          osmium tags-filter sn.osm.pbf "w/highway=$HIGHWAYS" -o roads.osm.pbf --overwrite
+          WHERE="highway IN ('$(echo "$HIGHWAYS" | sed "s/,/','/g")')"
+          ogr2ogr -f CSV roads.csv roads.osm.pbf lines -lco GEOMETRY=AS_WKT \
+            -select osm_id,highway,name -where "$WHERE"
+          echo "Routes extraites : $(($(wc -l < roads.csv) - 1))"
+
+      - name: Charger dans Supabase
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then echo "Secret SUPABASE_DB_URL manquant" >&2; exit 1; fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "truncate public.roads_staging"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -c "\copy public.roads_staging(wkt,osm_id,highway,name) from 'roads.csv' with (format csv, header true)"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -tA -c "select public.refresh_roads()"
