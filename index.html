@@ -235,6 +235,19 @@
       <p>Seuls les dangers <b>devant vous</b> déclenchent une alerte. Pour un tronçon, l'appli annonce aussi l'entrée dans la zone, puis sa fin.</p>
     </details>
     <details>
+      <summary>Vérification automatique des relevés</summary>
+      <p>À chaque envoi, le serveur contrôle le relevé, sans intervention humaine :</p>
+      <ul class="tips">
+        <li>il doit être <b>sur une route connue</b> (à 30 m près). Un point placé sur une maison, un hôtel ou un champ est jugé douteux ;</li>
+        <li>la <b>précision du GPS</b> doit être de 50 m ou mieux ;</li>
+        <li>le <b>déplacement</b> depuis votre relevé précédent doit être possible (pas 150 km en une minute) ;</li>
+        <li>pas plus de <b>40 relevés en 10 minutes</b> ;</li>
+        <li>les relevés <b>hors du Sénégal</b> sont refusés.</li>
+      </ul>
+      <p>Un relevé crédible est <b>validé</b> tout de suite, et un point proche de la route est <b>replacé exactement sur la route</b>, ce qui corrige les petites erreurs du GPS.</p>
+      <p>Un relevé douteux est mis <b>« à vérifier »</b> : il apparaît en gris sur la carte et <b>ne déclenche pas d'alerte</b>. Il devient valide dès qu'<b>un autre testeur</b> le confirme sur place avec un relevé crédible. Vos propres confirmations ne suffisent pas. Sans confirmation au bout de <b>30 jours</b>, il est supprimé automatiquement.</p>
+    </details>
+    <details>
       <summary>Un danger déjà enregistré</summary>
       <p>Si vous relevez un danger <b>du même type</b> à <b>moins de 30 m</b> d'un danger déjà en base, l'appli ne crée pas de doublon : elle <b>confirme</b> le danger existant (« Déjà enregistré — confirmé, 3 relevés »).</p>
       <p>Pour un <b>point</b>, sa position devient la moyenne des relevés : elle se précise à chaque passage. Pour un <b>tronçon</b>, s'il recouvre un tronçon connu à plus de 60 %, c'est une confirmation, et l'appli garde le tracé le plus long.</p>
@@ -346,8 +359,21 @@ const state = {
   addMode:false, wakeLock:null, audio:null, follow:true,
   // Synchronisation : opérations en attente d'envoi (relevés, suppressions)
   queue: load(LS_QUEUE, []),
-  cloud:{client:null, userId:load(LS_USER, null), syncing:false, lastSync:load(LS_SYNC, null), error:null, online:navigator.onLine}
+  cloud:{client:null, userId:load(LS_USER, null), syncing:false, lastSync:load(LS_SYNC, null), error:null, online:navigator.onLine, notices:[]}
 };
+
+/* ---------- Vérification automatique (statut décidé par le serveur) ---------- */
+const FLAG_LABELS = {
+  hors_route: 'loin de toute route connue',
+  gps_imprecis: 'GPS imprécis',
+  deplacement_impossible: 'déplacement impossible depuis le relevé précédent',
+  rafale: 'trop de relevés en peu de temps'
+};
+const isDoubtful = h => h.status === 'a_verifier';
+function flagText(h){
+  const f = (h.flags || []).map(x => FLAG_LABELS[x] || x);
+  return f.length ? f.join(', ') : 'à confirmer';
+}
 const cloudOn = () => !!(SUPABASE_URL && SUPABASE_KEY);
 
 /* ---------- Géométrie ---------- */
@@ -400,7 +426,7 @@ function toast(msg, action){
   const s = document.createElement('span'); s.textContent = msg; el.appendChild(s);
   if(action){ const b = document.createElement('button'); b.textContent = action.label; b.onclick = () => { action.fn(); el.classList.add('hidden'); }; el.appendChild(b); }
   el.classList.remove('hidden'); clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), action ? 6000 : 2800);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), action ? 6000 : Math.min(12000, 2800 + msg.length * 45));
 }
 function vibrate(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 
@@ -420,12 +446,17 @@ function renderHazards(){
   if(!map) return; hazLayer.clearLayers();
   for(const h of state.hazards){
     const t = TYPES[h.type]; if(!t) continue;
+    const doubt = isDoubtful(h);
+    const tip = t.label + (doubt ? ' — à vérifier (' + flagText(h) + ')' : '');
     if(h.geometry.type === 'Point'){
-      L.circleMarker([h.geometry.coordinates[1], h.geometry.coordinates[0]], {radius:8, color:'#fff', weight:2, fillColor:t.color, fillOpacity:1})
-        .bindTooltip(t.label).addTo(hazLayer);
+      L.circleMarker([h.geometry.coordinates[1], h.geometry.coordinates[0]],
+        doubt ? {radius:7, color:t.color, weight:3, dashArray:'3 3', fillColor:'#94a3b8', fillOpacity:.55}
+              : {radius:8, color:'#fff', weight:2, fillColor:t.color, fillOpacity:1})
+        .bindTooltip(tip).addTo(hazLayer);
     } else {
-      L.polyline(h.geometry.coordinates.map(c => [c[1], c[0]]), {color:t.color, weight:8, opacity:.85})
-        .bindTooltip(t.label + ' — ' + fmtDist(h.lengthM || lineLength(h.geometry.coordinates))).addTo(hazLayer);
+      L.polyline(h.geometry.coordinates.map(c => [c[1], c[0]]),
+        doubt ? {color:'#94a3b8', weight:6, opacity:.7, dashArray:'6 8'} : {color:t.color, weight:8, opacity:.85})
+        .bindTooltip(tip + ' — ' + fmtDist(h.lengthM || lineLength(h.geometry.coordinates))).addTo(hazLayer);
     }
   }
 }
@@ -604,7 +635,8 @@ const isRejection = e => !!(e && e.code && /^(P0001|22|23)/.test(e.code));
 function fromServer(r){
   return {id:r.id, type:r.type, geometry:r.geometry, createdAt:r.created_at, lastSeen:r.last_seen,
           confirmations:r.confirmations, accuracy:r.accuracy, speedKmh:r.speed_kmh, heading:r.heading,
-          lengthM:r.length_m, source:r.source, createdBy:r.created_by};
+          lengthM:r.length_m, source:r.source, createdBy:r.created_by,
+          status:r.status || 'valide', flags:Array.isArray(r.flags) ? r.flags : []};
 }
 async function pull(c){
   const rows = []; const PAGE = 1000;
@@ -634,8 +666,17 @@ async function flush(c){
       res = await c.rpc('delete_hazard', {p_id:op.id});
     } else { state.queue.shift(); saveQueue(); continue; }
     if(res.error){
-      if(isRejection(res.error)){ state.cloud.error = 'Relevé refusé : ' + res.error.message; state.queue.shift(); saveQueue(); continue; }
+      if(isRejection(res.error)){
+        state.cloud.error = 'Relevé refusé : ' + res.error.message;
+        state.cloud.notices.push('Relevé refusé par le serveur : ' + res.error.message);
+        state.queue.shift(); saveQueue(); continue;
+      }
       throw res.error;                         // réseau ou autre : on réessaiera plus tard
+    }
+    // relevé accepté mais jugé douteux : on prévient l'utilisateur
+    if(op.op === 'report' && res.data && res.data.result === 'new' && res.data.status === 'a_verifier'){
+      const lab = (TYPES[op.type] || {label:'Relevé'}).label;
+      state.cloud.notices.push(lab + ' mis « à vérifier » : ' + flagText({flags:res.data.flags}) + '. Il sera validé si un autre testeur le confirme.');
     }
     state.queue.shift(); saveQueue();
   }
@@ -653,7 +694,8 @@ async function sync(manual){
     state.cloud.online = true;
     state.cloud.lastSync = new Date().toISOString(); save(LS_SYNC, state.cloud.lastSync);
     if(state.cloud.error && !/refusé/.test(state.cloud.error)) state.cloud.error = null;
-    if(manual) toast('Carte à jour : ' + state.hazards.length + ' dangers');
+    if(state.cloud.notices.length){ toast(state.cloud.notices.join(' — ')); state.cloud.notices = []; }
+    else if(manual) toast('Carte à jour : ' + state.hazards.length + ' dangers');
   }catch(e){
     state.cloud.online = navigator.onLine;
     state.cloud.error = e && e.auth
@@ -758,6 +800,7 @@ function checkAlerts(){
   const AD = alertDistance(); let next = null;
   for(const h of state.hazards){
     const t = TYPES[h.type]; if(!t) continue;
+    if(isDoubtful(h)) continue;            // relevé « à vérifier » : pas d'alerte
     const isSeg = h.geometry.type === 'LineString';
     let d, target;
     if(isSeg){ const n = nearestOnLine(p, h.geometry.coordinates); d = n.d; target = n.pt; }
@@ -983,6 +1026,12 @@ function renderData(){
     c.lastChild.textContent = t.label + ' : ' + (counts[k] || 0);
     st.appendChild(c);
   }
+  const nDoubt = state.hazards.filter(isDoubtful).length;
+  if(nDoubt){
+    const c = document.createElement('span'); c.className = 'chip';
+    c.textContent = '⚠ À vérifier : ' + nDoubt + ' (sans alerte)';
+    st.appendChild(c);
+  }
   const ul = $('list'); ul.innerHTML = '';
   const items = state.hazards.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   if(!items.length){ const li = document.createElement('li'); li.textContent = 'Aucun danger enregistré pour l’instant.'; ul.appendChild(li); return; }
@@ -999,6 +1048,7 @@ function renderData(){
                      ((h.confirmations || 1) > 1 ? ' · ✓ ' + h.confirmations + ' relevés' : '') +
                      (h.lastSeen && h.lastSeen !== h.createdAt ? ' · revu le ' + new Date(h.lastSeen).toLocaleDateString('fr-FR') : '') +
                      (cloudOn() && h.pending ? ' · ⏳ en attente d’envoi' : '') +
+                     (isDoubtful(h) ? ' · ⚠ à vérifier : ' + flagText(h) : '') +
                      (cloudOn() && !h.pending && h.createdBy && h.createdBy === state.cloud.userId ? ' · mon relevé' : '');
     meta.appendChild(sm);
     const see = document.createElement('button'); see.textContent = 'Voir';
