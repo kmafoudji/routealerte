@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>RouteAlerte — prototype</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --text:#f1f5f9; --muted:#94a3b8;
+    --accent:#f59e0b; --ok:#22c55e; --danger:#ef4444; --blue:#3b82f6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px}
+  body{display:flex;flex-direction:column;min-height:100%}
+  .hidden{display:none !important}
+  header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#020617}
+  .brand{font-weight:700;letter-spacing:.3px}
+  .tag{font-size:11px;font-weight:600;background:var(--accent);color:#111;border-radius:6px;padding:2px 6px;margin-left:4px;vertical-align:middle}
+  .gps{font-size:13px;padding:3px 8px;border-radius:999px;background:#334155}
+  .gps.ok{background:#14532d;color:#bbf7d0}
+  .gps.warn{background:#713f12;color:#fde68a}
+  .gps.off{background:#7f1d1d;color:#fecaca}
+  .hright{display:flex;gap:6px;align-items:center}
+  #syncBox{background:var(--panel);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  #syncBox small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  #mapWrap{position:relative}
+  #map{height:36vh;min-height:200px;background:#1f2937}
+  #mapOff{padding:10px 12px;font-size:14px;color:var(--muted);background:var(--panel)}
+  #recenter{position:absolute;right:10px;bottom:10px;z-index:500;border:0;border-radius:8px;
+    padding:8px 10px;background:#0f172acc;color:#fff;font-size:14px}
+  #speedBar{display:flex;gap:14px;align-items:baseline;padding:8px 12px;background:var(--panel);font-size:14px;color:var(--muted)}
+  #speedVal{font-size:22px;font-weight:700;color:var(--text)}
+  nav{display:flex;background:#020617}
+  nav button{flex:1;border:0;background:transparent;color:var(--muted);padding:12px 4px;font-size:15px;font-weight:600;border-bottom:3px solid transparent}
+  nav button.active{color:var(--text);border-bottom-color:var(--accent)}
+  main{flex:1;padding:12px;overflow:auto}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tbtn{border:0;border-radius:14px;padding:16px 10px;min-height:86px;color:#fff;font-size:16px;font-weight:700;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 2px 0 #0006}
+  .tbtn:active{transform:translateY(2px);box-shadow:none}
+  .tbtn .ico{font-size:26px}
+  .tbtn .kind{font-size:11px;font-weight:600;opacity:.85;text-transform:uppercase;letter-spacing:.5px}
+  .row{display:flex;align-items:center;gap:10px;margin:14px 0;font-size:15px}
+  .row input[type=checkbox]{width:22px;height:22px}
+  .hint{color:var(--muted);font-size:13px;line-height:1.45}
+  #recBanner{background:var(--danger);border-radius:14px;padding:12px;margin-bottom:12px}
+  #recBanner .t{font-weight:700;font-size:17px}
+  #recBanner .btns{display:flex;gap:10px;margin-top:10px}
+  .btn{border:0;border-radius:10px;padding:12px 14px;font-size:15px;font-weight:700;background:var(--panel2);color:var(--text)}
+  .btn.primary{background:var(--accent);color:#111}
+  .btn.ok{background:var(--ok);color:#052e16}
+  .btn.danger{background:var(--danger);color:#fff}
+  .btn.light{background:#fff;color:#111}
+  .btn.block{width:100%}
+  .big{width:100%;border:0;border-radius:16px;padding:20px;font-size:20px;font-weight:800;background:var(--ok);color:#052e16}
+  .big.stop{background:var(--danger);color:#fff}
+  #nextBox{margin:14px 0;background:var(--panel);border-radius:16px;padding:16px;text-align:center}
+  #nextBox .lbl{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.6px}
+  #nextType{font-size:26px;font-weight:800;margin-top:6px}
+  #nextDist{font-size:44px;font-weight:900;margin-top:4px}
+  #nextBox.flash{animation:flash .9s ease 3}
+  @keyframes flash{0%,100%{background:var(--panel)}50%{background:#b45309}}
+  details{background:var(--panel);border-radius:12px;padding:10px 12px;margin:10px 0}
+  summary{font-weight:700;cursor:pointer}
+  label.f{display:flex;justify-content:space-between;align-items:center;margin:10px 0;font-size:15px;gap:10px}
+  select{background:var(--panel2);color:var(--text);border:1px solid #475569;border-radius:8px;padding:6px 8px;font-size:15px}
+  .stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border-radius:999px;padding:6px 10px;font-size:13px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  ul.list{list-style:none;margin:0;padding:0}
+  ul.list li{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:10px;margin-bottom:8px}
+  ul.list .meta{flex:1;font-size:14px}
+  ul.list .meta small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  ul.list button{border:0;border-radius:8px;padding:8px 10px;background:var(--panel2);color:var(--text);font-size:13px}
+  #toast{position:fixed;left:12px;right:12px;bottom:16px;z-index:2000;background:#020617;border:1px solid #334155;
+    border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 6px 20px #000a}
+  #toast button{border:0;border-radius:8px;padding:8px 12px;background:var(--accent);color:#111;font-weight:700}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1500;background:var(--panel);border-radius:18px 18px 0 0;padding:14px;box-shadow:0 -6px 20px #000a}
+  .sheet h3{margin:0 0 10px;font-size:16px}
+  .modal{position:fixed;inset:0;z-index:3000;background:#000c;display:flex;align-items:center;justify-content:center;padding:18px}
+  .modal .card{background:var(--panel);border-radius:16px;padding:18px;max-width:440px}
+  .modal h2{margin:0 0 8px;font-size:19px}
+  .modal p{line-height:1.5;color:#cbd5e1;font-size:15px}
+  .leaflet-tooltip{font-size:13px}
+  h2.h{font-size:17px;margin:18px 0 8px}
+  h2.h:first-child{margin-top:2px}
+  details p{line-height:1.5;color:#cbd5e1;font-size:14px;margin:8px 0}
+  .gcard{display:flex;gap:12px;background:var(--panel);border-radius:12px;padding:12px;margin-bottom:8px;border-left:6px solid}
+  .gcard .gico{font-size:26px;line-height:1}
+  .gcard .gt{font-weight:700}
+  .gcard .gk{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-radius:6px;padding:2px 6px;margin-left:6px;background:#334155;color:#cbd5e1;vertical-align:middle}
+  .gcard p{margin:6px 0 0;font-size:14px;line-height:1.45;color:#cbd5e1}
+  .gcard p.tip{color:#fde68a}
+  ul.tips{margin:0;padding-left:20px}
+  ul.tips li{margin:6px 0;line-height:1.45;font-size:14px;color:#cbd5e1}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">RouteAlerte <span class="tag">prototype</span></div>
+  <div class="hright">
+    <div id="syncStatus" class="gps" title="Synchronisation avec le serveur">Local</div>
+    <div id="gpsStatus" class="gps">GPS…</div>
+  </div>
+</header>
+
+<div id="mapWrap">
+  <div id="map"></div>
+  <button id="recenter" class="hidden">◎ Recentrer</button>
+</div>
+<div id="mapOff" class="hidden">Carte indisponible (pas de connexion) — l'enregistrement et les alertes fonctionnent quand même.</div>
+
+<div id="speedBar">
+  <span id="speedVal">– km/h</span>
+  <span id="accVal"></span>
+  <span id="countVal"></span>
+</div>
+
+<nav>
+  <button data-tab="rec" class="active">Relever</button>
+  <button data-tab="drive">Rouler</button>
+  <button data-tab="data">Données</button>
+  <button data-tab="help">Aide</button>
+</nav>
+
+<main>
+  <!-- RELEVER -->
+  <section id="tab-rec">
+    <div id="recBanner" class="hidden">
+      <div class="t" id="recTitle">Tronçon en cours</div>
+      <div id="recInfo">0 m</div>
+      <div class="btns">
+        <button class="btn light" id="recEnd" style="flex:2">■ Terminer le tronçon</button>
+        <button class="btn" id="recCancel" style="flex:1">Annuler</button>
+      </div>
+    </div>
+    <div class="grid" id="typeGrid"></div>
+    <label class="row"><input type="checkbox" id="addMode"> Ajouter un danger en touchant la carte</label>
+    <p class="hint">
+      <b>Point</b> : touchez le bouton au moment où vous passez sur le danger.<br>
+      <b>Tronçon</b> : touchez au début de la zone, puis « Terminer » à la fin. Le tracé est enregistré pendant que vous roulez.<br>
+      Le relevé se fait par un passager ou à l'arrêt, jamais par le conducteur.
+    </p>
+  </section>
+
+  <!-- ROULER -->
+  <section id="tab-drive" class="hidden">
+    <button id="driveBtn" class="big">▶ Démarrer les alertes</button>
+    <div id="nextBox">
+      <div class="lbl">Prochain danger</div>
+      <div id="nextType">—</div>
+      <div id="nextDist"></div>
+    </div>
+    <p class="hint" id="driveHint">Gardez l'appli ouverte au premier plan : l'écran reste allumé pendant les alertes (selon le téléphone).</p>
+
+    <details>
+      <summary>Réglages des alertes</summary>
+      <label class="f">Anticipation
+        <select id="setAnticip">
+          <option value="10">10 s</option><option value="15">15 s</option><option value="18">18 s</option>
+          <option value="20">20 s</option><option value="25">25 s</option><option value="30">30 s</option>
+        </select>
+      </label>
+      <label class="f">Distance minimale d'alerte
+        <select id="setMinDist">
+          <option value="100">100 m</option><option value="150">150 m</option>
+          <option value="200">200 m</option><option value="300">300 m</option>
+        </select>
+      </label>
+      <label class="f">Annonce vocale <input type="checkbox" id="setVoice"></label>
+      <label class="f">Bip sonore <input type="checkbox" id="setBeep"></label>
+      <p class="hint">Distance d'alerte = vitesse × anticipation, sans descendre sous le minimum. Exemple : 90 km/h × 18 s ≈ 450 m.</p>
+    </details>
+
+    <details id="simBox">
+      <summary>Mode simulation (tester sans rouler)</summary>
+      <label class="row"><input type="checkbox" id="simOn"> Activer la simulation</label>
+      <label class="f">Vitesse simulée
+        <select id="simKmh">
+          <option value="30">30 km/h</option><option value="50">50 km/h</option><option value="60" selected>60 km/h</option>
+          <option value="90">90 km/h</option><option value="110">110 km/h</option>
+        </select>
+      </label>
+      <p class="hint">1. Activez la simulation. 2. Touchez la carte pour placer la voiture. 3. Touchez un autre endroit : la voiture s'y rend à la vitesse choisie. Démarrez les alertes pour les entendre.</p>
+    </details>
+  </section>
+
+  <!-- DONNÉES -->
+  <section id="tab-data" class="hidden">
+    <div id="syncBox">
+      <div><span id="syncText">Mode local</span><small id="syncSub"></small></div>
+      <button class="btn" id="syncBtn">↻ Synchroniser</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="actions">
+      <button class="btn primary" id="expBtn">⬇ Exporter (GeoJSON)</button>
+      <button class="btn" id="copyBtn">Copier</button>
+      <button class="btn" id="impBtn">⬆ Importer</button>
+      <input type="file" id="impFile" accept=".geojson,.json,application/json,application/geo+json" class="hidden">
+      <button class="btn danger" id="clearBtn">Tout effacer</button>
+    </div>
+    <p class="hint" id="dataHint"></p>
+    <ul class="list" id="list"></ul>
+  </section>
+
+  <!-- AIDE -->
+  <section id="tab-help" class="hidden">
+    <h2 class="h">Les dangers : de quoi parle-t-on ?</h2>
+    <div id="glossary"></div>
+
+    <h2 class="h">Utiliser l'appli</h2>
+    <details>
+      <summary>Relever un danger</summary>
+      <p><b>Point</b> (dos d'âne, nid-de-poule, bétail, pont étroit) : touchez le bouton <b>au moment où la voiture passe sur le danger</b>. C'est la position GPS de cet instant qui est enregistrée.</p>
+      <p><b>Tronçon</b> (portion dégradée, déviation, zone inondable) : touchez le bouton <b>au début</b> de la zone. L'appli trace le parcours pendant que vous roulez. Touchez <b>« Terminer »</b> à la fin de la zone.</p>
+      <p><b>Depuis la carte</b> : cochez « Ajouter un danger en touchant la carte », puis touchez l'endroit exact. Pratique pour ajouter un danger que vous connaissez déjà.</p>
+      <p>Une erreur ? Touchez <b>« Annuler »</b> dans le message qui s'affiche, ou supprimez le danger dans l'onglet Données.</p>
+    </details>
+    <details>
+      <summary>Précision du GPS</summary>
+      <p>L'indicateur en haut à droite montre la précision : <b>vert</b> = bonne (25 m ou moins), <b>orange</b> = moyenne, <b>rouge</b> = GPS indisponible ou refusé.</p>
+      <p>Au démarrage, attendez que l'indicateur passe au vert avant de relever. La précision est meilleure à ciel ouvert, téléphone posé près du pare-brise.</p>
+    </details>
+    <details>
+      <summary>Comment fonctionnent les alertes</summary>
+      <p>Dans l'onglet <b>Rouler</b>, touchez « Démarrer les alertes ». L'appli prévient avec un bip, une vibration et une annonce vocale : « Attention, dos d'âne dans 300 mètres ».</p>
+      <p>La distance d'alerte dépend de la vitesse : <b>vitesse × anticipation</b> (18 secondes par défaut), jamais moins que la distance minimale. Exemples : à 50 km/h, environ 250 m ; à 90 km/h, environ 450 m ; à 110 km/h, environ 550 m.</p>
+      <p>Seuls les dangers <b>devant vous</b> déclenchent une alerte. Pour un tronçon, l'appli annonce aussi l'entrée dans la zone, puis sa fin.</p>
+    </details>
+    <details>
+      <summary>Un danger déjà enregistré</summary>
+      <p>Si vous relevez un danger <b>du même type</b> à <b>moins de 30 m</b> d'un danger déjà en base, l'appli ne crée pas de doublon : elle <b>confirme</b> le danger existant (« Déjà enregistré — confirmé, 3 relevés »).</p>
+      <p>Pour un <b>point</b>, sa position devient la moyenne des relevés : elle se précise à chaque passage. Pour un <b>tronçon</b>, s'il recouvre un tronçon connu à plus de 60 %, c'est une confirmation, et l'appli garde le tracé le plus long.</p>
+      <p>Le nombre de relevés s'affiche dans l'onglet Données. Plus un danger est confirmé, plus il est fiable. À l'import, les dangers déjà connus sont fusionnés de la même façon.</p>
+      <p>Un danger a disparu (dos d'âne enlevé, route refaite) ? Supprimez-le dans l'onglet Données.</p>
+    </details>
+    <details>
+      <summary>Carte commune et synchronisation</summary>
+      <p>Quand le serveur est configuré (indicateur <b>☁</b> en haut), tous les testeurs partagent <b>la même carte</b>. Vos relevés partent automatiquement dès qu'il y a du réseau, et la carte se met à jour chaque minute avec ceux des autres.</p>
+      <p><b>Sans réseau</b>, rien n'est perdu : les relevés sont gardés sur le téléphone (indicateur <b>⏳</b> avec leur nombre) et envoyés au retour du réseau. Les alertes fonctionnent toujours avec la dernière carte reçue.</p>
+      <p>Les doublons sont aussi détectés par le serveur : si deux testeurs relèvent le même dos d'âne, il est <b>confirmé</b> au lieu d'être créé deux fois.</p>
+      <p>Vous pouvez supprimer <b>vos propres relevés</b>, pas ceux des autres testeurs. Chaque téléphone est reconnu automatiquement, sans compte ni mot de passe ; si vous videz les données du navigateur, le téléphone est vu comme un nouveau testeur.</p>
+      <p>L'<b>export</b> et l'<b>import</b> de fichiers restent disponibles, par exemple pour envoyer au serveur des relevés faits avant sa mise en place.</p>
+    </details>
+    <details>
+      <summary>Tester sans rouler (simulation)</summary>
+      <p>Onglet Rouler → « Mode simulation ». Touchez la carte pour placer la voiture, puis un autre point pour la faire rouler. Démarrez les alertes pour les entendre comme en vrai.</p>
+    </details>
+
+    <h2 class="h">Sécurité</h2>
+    <ul class="tips">
+      <li>Le <b>conducteur ne touche pas</b> le téléphone en roulant : le relevé se fait par un passager ou à l'arrêt.</li>
+      <li>Fixez le téléphone sur un <b>support</b>, écran visible, sans gêner la vue.</li>
+      <li>L'appli est une <b>aide</b> : elle ne remplace pas l'attention, ni le respect des limitations et de la signalisation.</li>
+      <li>Une absence d'alerte ne veut pas dire absence de danger : la base ne contient que ce qui a été relevé.</li>
+      <li>De nuit et en saison des pluies, ralentissez même sur une route connue.</li>
+    </ul>
+
+    <h2 class="h">Problèmes fréquents</h2>
+    <details>
+      <summary>« GPS refusé » ou « HTTPS requis »</summary>
+      <p>Autorisez la localisation pour ce site dans les réglages du navigateur (Chrome : icône à gauche de l'adresse → Autorisations). L'appli doit être ouverte depuis une adresse qui commence par <b>https://</b>.</p>
+    </details>
+    <details>
+      <summary>Pas de voix ou pas de son</summary>
+      <p>Montez le volume « média ». Sur iPhone, désactivez le mode silencieux. Vérifiez qu'une voix française est installée (Réglages → Synthèse vocale / Accessibilité). Le son ne démarre qu'après avoir touché « Démarrer les alertes ».</p>
+    </details>
+    <details>
+      <summary>L'écran s'éteint ou les alertes s'arrêtent</summary>
+      <p>Gardez l'appli ouverte au premier plan. Si l'écran s'éteint quand même, allongez la mise en veille dans les réglages du téléphone, et branchez-le au chargeur pour les longs trajets.</p>
+    </details>
+    <details>
+      <summary>Pas de réseau sur la route</summary>
+      <p>Ouvrez l'appli <b>avant de partir</b>, quand vous avez du réseau, et ne la fermez pas. Sans réseau, le fond de carte peut ne pas s'afficher, mais l'enregistrement et les alertes continuent de fonctionner.</p>
+    </details>
+  </section>
+</main>
+
+<div id="picker" class="sheet hidden">
+  <h3>Quel danger ici ?</h3>
+  <div class="grid" id="pickerGrid"></div>
+  <button class="btn block" id="pickerCancel" style="margin-top:10px">Annuler</button>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<div id="safety" class="modal hidden">
+  <div class="card">
+    <h2>Avant de commencer</h2>
+    <p>Ce prototype sert à <b>relever</b> les dangers de la route et à <b>alerter</b> le conducteur avant d'y arriver.</p>
+    <p>Le conducteur ne doit jamais manipuler le téléphone en roulant : le relevé se fait par un <b>passager</b> ou à l'arrêt. Fixez le téléphone sur un support.</p>
+    <p>Autorisez l'accès à la position quand le téléphone le demande.</p>
+    <button class="btn primary block" id="safetyOk">J'ai compris</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+'use strict';
+
+/* =====================================================================
+   CONFIGURATION SUPABASE — à remplir (Supabase → Project Settings → API Keys)
+   Laisser vide = mode local (données seulement sur le téléphone).
+   La clé « publishable » est faite pour être publique : la sécurité est
+   assurée par les règles de la base (voir supabase/schema.sql).
+   ===================================================================== */
+const SUPABASE_URL = 'https://rrrvkgxdwwounzpngqja.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_h-G4qQPpKtpEUbqjsIxZ9w_zl_x0Q9U';
+
+/* ---------- Types de dangers ---------- */
+const TYPES = {
+  dos_dane:         {label:"Dos d'âne",            speak:"dos d'âne",                 fin:"",                               ico:"⛰️", color:"#d97706", kind:"point"},
+  nid_poule:        {label:"Nid-de-poule",         speak:"nid-de-poule",              fin:"",                               ico:"🕳️", color:"#dc2626", kind:"point"},
+  portion_degradee: {label:"Portion dégradée",     speak:"portion de route dégradée", fin:"fin de la portion dégradée",     ico:"⚠️", color:"#9a3412", kind:"segment"},
+  betail:           {label:"Traversée de bétail",  speak:"traversée de bétail",       fin:"",                               ico:"🐄", color:"#4d7c0f", kind:"point"},
+  deviation:        {label:"Déviation / chantier", speak:"déviation de chantier",     fin:"fin de la déviation",            ico:"🚧", color:"#ea580c", kind:"segment"},
+  pont_etroit:      {label:"Pont étroit",          speak:"pont étroit",               fin:"",                               ico:"🌉", color:"#2563eb", kind:"point"},
+  zone_inondable:   {label:"Zone inondable",       speak:"zone inondable",            fin:"fin de la zone inondable",       ico:"🌊", color:"#0891b2", kind:"segment"}
+};
+
+const LS_HAZ = 'routealerte.hazards.v1';
+const LS_SET = 'routealerte.settings.v1';
+const LS_SAFE = 'routealerte.safety.v1';
+const LS_QUEUE = 'routealerte.queue.v1';
+const LS_USER = 'routealerte.user.v1';
+const LS_SYNC = 'routealerte.lastsync.v1';
+const $ = id => document.getElementById(id);
+
+function load(k, def){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ toast("Impossible d'enregistrer sur ce téléphone (stockage plein ou bloqué)"); return false; } }
+
+const state = {
+  pos:null, headingRef:null, heading:null, speed:0,
+  hazards: load(LS_HAZ, []),
+  settings: Object.assign({anticip:18, minDist:150, voice:true, beep:true}, load(LS_SET, {})),
+  rec:null, driving:false, alertState:{},
+  sim:{active:false, pos:null, target:null, kmh:60, timer:null},
+  addMode:false, wakeLock:null, audio:null, follow:true,
+  // Synchronisation : opérations en attente d'envoi (relevés, suppressions)
+  queue: load(LS_QUEUE, []),
+  cloud:{client:null, userId:load(LS_USER, null), syncing:false, lastSync:load(LS_SYNC, null), error:null, online:navigator.onLine}
+};
+const cloudOn = () => !!(SUPABASE_URL && SUPABASE_KEY);
+
+/* ---------- Géométrie ---------- */
+const R = 6371000, toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+const r6 = x => Math.round(x*1e6)/1e6;
+function dist(a, b){
+  const dLat = toRad(b.lat-a.lat), dLng = toRad(b.lng-a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function bearing(a, b){
+  const y = Math.sin(toRad(b.lng-a.lng))*Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat))*Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.cos(toRad(b.lng-a.lng));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+function angleDiff(a, b){ let d = Math.abs(a-b) % 360; return d > 180 ? 360-d : d; }
+function destPoint(p, brg, d){
+  const dr = d/R, th = toRad(brg), p1 = toRad(p.lat), l1 = toRad(p.lng);
+  const p2 = Math.asin(Math.sin(p1)*Math.cos(dr) + Math.cos(p1)*Math.sin(dr)*Math.cos(th));
+  const l2 = l1 + Math.atan2(Math.sin(th)*Math.sin(dr)*Math.cos(p1), Math.cos(dr) - Math.sin(p1)*Math.sin(p2));
+  return {lat:toDeg(p2), lng:toDeg(l2)};
+}
+const ll = c => ({lat:c[1], lng:c[0]});
+function nearestOnLine(p, coords){
+  if(coords.length === 1){ const q = ll(coords[0]); return {d:dist(p, q), pt:q}; }
+  const k = Math.cos(toRad(p.lat));
+  const X = c => ({x:toRad(c.lng)*k*R, y:toRad(c.lat)*R});
+  const P = X(p); let best = {d:Infinity, pt:null};
+  for(let i=0; i<coords.length-1; i++){
+    const a = ll(coords[i]), b = ll(coords[i+1]); const A = X(a), B = X(b);
+    const dx = B.x-A.x, dy = B.y-A.y, L2 = dx*dx + dy*dy;
+    let t = L2 ? ((P.x-A.x)*dx + (P.y-A.y)*dy)/L2 : 0; t = Math.max(0, Math.min(1, t));
+    const q = {lat:a.lat + (b.lat-a.lat)*t, lng:a.lng + (b.lng-a.lng)*t};
+    const d = dist(p, q); if(d < best.d) best = {d, pt:q};
+  }
+  return best;
+}
+function lineLength(coords){ let s = 0; for(let i=1; i<coords.length; i++) s += dist(ll(coords[i-1]), ll(coords[i])); return s; }
+
+/* ---------- Outils UI ---------- */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+function fmtDist(d){ return d < 1000 ? Math.round(d/10)*10 + ' m' : (d/1000).toFixed(1).replace('.', ',') + ' km'; }
+function fmtDistSpeak(d){
+  if(d < 1000) return Math.max(50, Math.round(d/50)*50) + ' mètres';
+  const km = Math.round(d/100)/10; return String(km).replace('.', ',') + (km >= 2 ? ' kilomètres' : ' kilomètre');
+}
+let toastTimer = null;
+function toast(msg, action){
+  const el = $('toast'); el.innerHTML = '';
+  const s = document.createElement('span'); s.textContent = msg; el.appendChild(s);
+  if(action){ const b = document.createElement('button'); b.textContent = action.label; b.onclick = () => { action.fn(); el.classList.add('hidden'); }; el.appendChild(b); }
+  el.classList.remove('hidden'); clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), action ? 6000 : 2800);
+}
+function vibrate(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+
+/* ---------- Carte ---------- */
+let map = null, hazLayer = null, posMarker = null, accCircle = null, recLine = null, simTargetMarker = null;
+function initMap(){
+  if(typeof L === 'undefined'){ $('map').classList.add('hidden'); $('mapOff').classList.remove('hidden'); return; }
+  map = L.map('map', {zoomControl:true}).setView([14.6928, -17.4467], 11);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+  hazLayer = L.layerGroup().addTo(map);
+  map.on('click', onMapClick);
+  map.on('dragstart', () => { state.follow = false; $('recenter').classList.remove('hidden'); });
+  $('recenter').onclick = () => { state.follow = true; $('recenter').classList.add('hidden'); if(state.pos) map.setView([state.pos.lat, state.pos.lng], Math.max(map.getZoom(), 15)); };
+  renderHazards();
+}
+function renderHazards(){
+  if(!map) return; hazLayer.clearLayers();
+  for(const h of state.hazards){
+    const t = TYPES[h.type]; if(!t) continue;
+    if(h.geometry.type === 'Point'){
+      L.circleMarker([h.geometry.coordinates[1], h.geometry.coordinates[0]], {radius:8, color:'#fff', weight:2, fillColor:t.color, fillOpacity:1})
+        .bindTooltip(t.label).addTo(hazLayer);
+    } else {
+      L.polyline(h.geometry.coordinates.map(c => [c[1], c[0]]), {color:t.color, weight:8, opacity:.85})
+        .bindTooltip(t.label + ' — ' + fmtDist(h.lengthM || lineLength(h.geometry.coordinates))).addTo(hazLayer);
+    }
+  }
+}
+function updatePosMarker(){
+  if(!map || !state.pos) return; const p = [state.pos.lat, state.pos.lng];
+  if(!posMarker){
+    accCircle = L.circle(p, {radius:state.pos.acc || 10, color:'#3b82f6', weight:1, fillOpacity:.12}).addTo(map);
+    posMarker = L.circleMarker(p, {radius:9, color:'#fff', weight:3, fillColor:'#3b82f6', fillOpacity:1}).addTo(map);
+    map.setView(p, 16);
+  } else {
+    posMarker.setLatLng(p); accCircle.setLatLng(p); accCircle.setRadius(state.pos.acc || 10);
+    if(state.follow) map.panTo(p, {animate:true});
+  }
+}
+function drawRecLine(){
+  if(!map || !state.rec) return; const pts = state.rec.coords.map(c => [c[1], c[0]]);
+  if(!recLine) recLine = L.polyline(pts, {color:'#ef4444', weight:6, dashArray:'8 8'}).addTo(map); else recLine.setLatLngs(pts);
+}
+function clearRecLine(){ if(recLine && map){ map.removeLayer(recLine); } recLine = null; }
+
+/* ---------- GPS ---------- */
+function setGps(text, cls){ const el = $('gpsStatus'); el.textContent = text; el.className = 'gps ' + (cls || ''); }
+function startGPS(){
+  if(!('geolocation' in navigator)){ setGps('Pas de GPS', 'off'); return; }
+  if(!window.isSecureContext){ setGps('HTTPS requis', 'off'); toast("La localisation ne fonctionne qu'en HTTPS : ouvrez l'appli depuis une adresse https://"); }
+  navigator.geolocation.watchPosition(p => {
+    if(state.sim.active) return;
+    onPosition({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy, speed:p.coords.speed, heading:p.coords.heading, ts:p.timestamp});
+  }, err => {
+    setGps(err.code === 1 ? 'GPS refusé' : 'GPS indisponible', 'off');
+    if(err.code === 1) toast("Autorisez la localisation pour ce site dans les réglages du navigateur.");
+  }, {enableHighAccuracy:true, maximumAge:1000, timeout:20000});
+}
+function onPosition(p){
+  const prev = state.pos;
+  let speed = (typeof p.speed === 'number' && !isNaN(p.speed)) ? p.speed : null;
+  if(speed === null && prev){ const dt = (p.ts - prev.ts)/1000; if(dt > 0) speed = dist(prev, p)/dt; }
+  state.speed = speed || 0;
+
+  if(typeof p.heading === 'number' && !isNaN(p.heading) && state.speed > 1.5){ state.heading = p.heading; state.headingRef = p; }
+  else if(!state.headingRef){ state.headingRef = p; }
+  else if(dist(state.headingRef, p) >= 8){ state.heading = bearing(state.headingRef, p); state.headingRef = p; }
+
+  state.pos = p;
+  updateStatus(); updatePosMarker();
+  if(state.rec) recAddPoint(p);
+  if(state.driving) checkAlerts();
+}
+function updateStatus(){
+  const p = state.pos; if(!p) return;
+  const acc = Math.round(p.acc || 0);
+  const label = state.sim.active ? 'Simulation' : 'GPS ±' + acc + ' m';
+  setGps(label, state.sim.active ? 'warn' : (acc <= 25 ? 'ok' : 'warn'));
+  $('speedVal').textContent = Math.round(state.speed*3.6) + ' km/h';
+  $('accVal').textContent = state.heading !== null ? 'cap ' + Math.round(state.heading) + '°' : '';
+}
+function updateCount(){ $('countVal').textContent = state.hazards.length + ' danger' + (state.hazards.length > 1 ? 's' : '') + ' en base'; }
+
+/* ---------- Enregistrement ---------- */
+function persist(){
+  save(LS_HAZ, state.hazards);
+  // on garde l'état des alertes déjà données (pas de répétition après une synchro)
+  const ids = new Set(state.hazards.map(h => h.id));
+  for(const id of Object.keys(state.alertState)) if(!ids.has(id)) delete state.alertState[id];
+  renderHazards(); renderData(); updateCount();
+}
+function addHazard(h){ state.hazards.push(h); persist(); }
+function removeLocal(id){ state.hazards = state.hazards.filter(h => h.id !== id); persist(); }
+
+/* ---------- File d'attente de synchronisation ---------- */
+function saveQueue(){ save(LS_QUEUE, state.queue); updateSyncUI(); }
+function enqueue(op){ if(!cloudOn()) return; state.queue.push(op); saveQueue(); scheduleSync(); }
+function reportOp(h){
+  return {op:'report', id:h.id, type:h.type, geometry:h.geometry, observedAt:h.createdAt || new Date().toISOString(),
+          accuracy: h.accuracy ?? null, speedKmh: h.speedKmh ?? null, heading: h.heading ?? null, source: h.source || null};
+}
+function canDelete(h){
+  if(!cloudOn()) return true;
+  if(h.pending) return true;
+  return !!(state.cloud.userId && h.createdBy === state.cloud.userId);
+}
+// Suppression demandée par l'utilisateur depuis la liste
+function userDelete(h){
+  if(!canDelete(h)){ toast('Vous ne pouvez supprimer que vos propres relevés'); return false; }
+  const qi = state.queue.findIndex(o => o.op === 'report' && o.id === h.id);
+  if(qi >= 0){ state.queue.splice(qi, 1); saveQueue(); }       // pas encore envoyé
+  else if(cloudOn()) enqueue({op:'delete', id:h.id});           // déjà sur le serveur
+  removeLocal(h.id);
+  return true;
+}
+
+/* ---------- Danger déjà enregistré : détection et confirmation ---------- */
+const DUP_POINT_M = 30;   // même type à moins de 30 m = même danger
+const DUP_SEG_M = 40;     // tronçons : points à moins de 40 m l'un de l'autre
+const DUP_SEG_SHARE = 0.6; // 60 % de recouvrement = même tronçon
+function overlapShare(a, b){ // part des points de a proches de la ligne b
+  if(!a.length) return 0; let n = 0;
+  for(const c of a) if(nearestOnLine(ll(c), b).d <= DUP_SEG_M) n++;
+  return n / a.length;
+}
+function findDuplicate(h){
+  let best = null;
+  for(const ex of state.hazards){
+    if(ex.type !== h.type || ex.id === h.id || ex.geometry.type !== h.geometry.type) continue;
+    if(h.geometry.type === 'Point'){
+      const d = dist(ll(ex.geometry.coordinates), ll(h.geometry.coordinates));
+      if(d <= DUP_POINT_M && (!best || d < best.d)) best = {ex, d};
+    } else {
+      const share = Math.max(overlapShare(h.geometry.coordinates, ex.geometry.coordinates),
+                             overlapShare(ex.geometry.coordinates, h.geometry.coordinates));
+      if(share >= DUP_SEG_SHARE && (!best || share > best.share)) best = {ex, share, d:0};
+    }
+  }
+  return best;
+}
+function confirmHazard(ex, h){
+  const n = ex.confirmations || 1;
+  if(h.geometry.type === 'Point'){
+    // la position devient la moyenne des relevés : elle se précise à chaque passage
+    const a = ex.geometry.coordinates, b = h.geometry.coordinates;
+    ex.geometry.coordinates = [r6((a[0]*n + b[0])/(n+1)), r6((a[1]*n + b[1])/(n+1))];
+  } else if((h.lengthM || 0) > (ex.lengthM || 0)){
+    ex.geometry = h.geometry; ex.lengthM = h.lengthM; // on garde le tracé le plus complet
+  }
+  ex.confirmations = n + 1;
+  ex.lastSeen = h.createdAt || new Date().toISOString();
+}
+// Enregistre un nouveau relevé, ou confirme le danger existant s'il est déjà connu
+// Applique un relevé à la carte locale (nouveau danger ou confirmation). Renvoie le résultat.
+function applyLocal(h){
+  const dup = findDuplicate(h);
+  if(!dup){ const n = Object.assign({}, h); if(cloudOn()) n.pending = true;
+            if(state.cloud.userId && !n.createdBy) n.createdBy = state.cloud.userId;
+            state.hazards.push(n); return {isNew:true}; }
+  const before = JSON.parse(JSON.stringify(dup.ex));
+  confirmHazard(dup.ex, h);
+  return {isNew:false, dup, before};
+}
+function saveOrConfirm(h, label){
+  const res = applyLocal(h); persist();
+  enqueue(reportOp(h));
+  const undo = () => {
+    const qi = state.queue.findIndex(o => o.op === 'report' && o.id === h.id);
+    if(qi >= 0){ state.queue.splice(qi, 1); saveQueue(); }
+    else if(cloudOn() && !res.isNew){ toast('Déjà transmis au serveur : la confirmation ne peut plus être annulée'); return; }
+    else if(cloudOn() && res.isNew){ enqueue({op:'delete', id:h.id}); }
+    if(res.isNew) removeLocal(h.id);
+    else { const i = state.hazards.findIndex(x => x.id === res.before.id); if(i >= 0) state.hazards[i] = res.before; persist(); }
+  };
+  if(res.isNew){ vibrate(80); toast(label + ' enregistré' + (h.geometry.type === 'LineString' ? 'e (' + fmtDist(h.lengthM) + ')' : ''), {label:'Annuler', fn:undo}); return; }
+  vibrate([40, 40, 40]);
+  const where = h.geometry.type === 'Point' ? ' à ' + Math.round(res.dup.d) + ' m' : '';
+  toast('Déjà enregistré' + where + ' — confirmé (' + res.dup.ex.confirmations + ' relevés)', {label:'Annuler', fn:undo});
+}
+
+/* ---------- Synchronisation Supabase ---------- */
+function getClient(){
+  if(state.cloud.client) return state.cloud.client;
+  if(!cloudOn() || !window.supabase || !window.supabase.createClient) return null;
+  state.cloud.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:true, autoRefreshToken:true}});
+  return state.cloud.client;
+}
+async function ensureAuth(c){
+  const {data} = await c.auth.getSession();
+  let user = data && data.session && data.session.user;
+  if(!user){
+    const r = await c.auth.signInAnonymously();
+    if(r.error) throw Object.assign(new Error(r.error.message), {auth:true});
+    user = r.data.user;
+  }
+  if(user && user.id !== state.cloud.userId){ state.cloud.userId = user.id; save(LS_USER, user.id); }
+  return user;
+}
+// Erreur « définitive » renvoyée par la base (donnée refusée) : on retire l'opération
+const isRejection = e => !!(e && e.code && /^(P0001|22|23)/.test(e.code));
+function fromServer(r){
+  return {id:r.id, type:r.type, geometry:r.geometry, createdAt:r.created_at, lastSeen:r.last_seen,
+          confirmations:r.confirmations, accuracy:r.accuracy, speedKmh:r.speed_kmh, heading:r.heading,
+          lengthM:r.length_m, source:r.source, createdBy:r.created_by};
+}
+async function pull(c){
+  const rows = []; const PAGE = 1000;
+  for(let from = 0; ; from += PAGE){
+    const {data, error} = await c.from('hazards_geojson').select('*').order('id').range(from, from + PAGE - 1);
+    if(error) throw error;
+    rows.push(...data); if(data.length < PAGE) break;
+  }
+  // carte du serveur + ce qui n'est pas encore envoyé (rejoué par-dessus)
+  state.hazards = rows.filter(r => TYPES[r.type] && r.geometry).map(fromServer);
+  for(const op of state.queue){
+    if(op.op === 'report') applyLocal({id:op.id, type:op.type, geometry:op.geometry, createdAt:op.observedAt,
+      accuracy:op.accuracy, speedKmh:op.speedKmh, heading:op.heading, source:op.source,
+      lengthM: op.geometry.type === 'LineString' ? Math.round(lineLength(op.geometry.coordinates)) : null});
+    else if(op.op === 'delete') state.hazards = state.hazards.filter(h => h.id !== op.id);
+  }
+  persist();
+}
+async function flush(c){
+  while(state.queue.length){
+    const op = state.queue[0]; let res;
+    if(op.op === 'report'){
+      res = await c.rpc('report_hazard', {p_id:op.id, p_type:op.type, p_geometry:op.geometry, p_observed_at:op.observedAt,
+        p_accuracy: op.accuracy == null ? null : Math.round(op.accuracy), p_speed_kmh: op.speedKmh == null ? null : Math.round(op.speedKmh),
+        p_heading: op.heading == null ? null : Math.round(op.heading), p_source:op.source});
+    } else if(op.op === 'delete'){
+      res = await c.rpc('delete_hazard', {p_id:op.id});
+    } else { state.queue.shift(); saveQueue(); continue; }
+    if(res.error){
+      if(isRejection(res.error)){ state.cloud.error = 'Relevé refusé : ' + res.error.message; state.queue.shift(); saveQueue(); continue; }
+      throw res.error;                         // réseau ou autre : on réessaiera plus tard
+    }
+    state.queue.shift(); saveQueue();
+  }
+}
+async function sync(manual){
+  if(!cloudOn() || state.cloud.syncing) return;
+  const c = getClient();
+  if(!c){ state.cloud.error = 'Bibliothèque Supabase non chargée (pas de réseau à l’ouverture ?)'; updateSyncUI(); return; }
+  if(!navigator.onLine){ state.cloud.online = false; updateSyncUI(); if(manual) toast('Pas de réseau : les relevés partiront plus tard'); return; }
+  state.cloud.syncing = true; updateSyncUI();
+  try{
+    await ensureAuth(c);
+    await flush(c);
+    await pull(c);
+    state.cloud.online = true;
+    state.cloud.lastSync = new Date().toISOString(); save(LS_SYNC, state.cloud.lastSync);
+    if(state.cloud.error && !/refusé/.test(state.cloud.error)) state.cloud.error = null;
+    if(manual) toast('Carte à jour : ' + state.hazards.length + ' dangers');
+  }catch(e){
+    state.cloud.online = navigator.onLine;
+    state.cloud.error = e && e.auth
+      ? 'Connexion refusée : activez « Anonymous sign-ins » dans Supabase (' + e.message + ')'
+      : 'Synchro impossible : ' + ((e && e.message) || 'erreur réseau');
+    if(manual) toast(state.cloud.error);
+  }finally{
+    state.cloud.syncing = false; updateSyncUI();
+  }
+}
+let syncTimer = null;
+function scheduleSync(){ clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 1500); }
+function updateSyncUI(){
+  const el = $('syncStatus'), q = state.queue.length;
+  let text, cls, main, sub = '';
+  if(!cloudOn()){ text = 'Local'; cls = ''; main = 'Mode local';
+    sub = 'Serveur non configuré : les données restent sur ce téléphone.'; }
+  else if(state.cloud.syncing){ text = '↻ Synchro…'; cls = 'warn'; main = 'Synchronisation en cours…'; }
+  else if(!navigator.onLine || (state.cloud.error && !/refusé/.test(state.cloud.error))){
+    text = q ? '⏳ ' + q : 'Hors ligne'; cls = q ? 'warn' : 'off';
+    main = q ? q + ' relevé(s) en attente d’envoi' : 'Hors ligne'; sub = state.cloud.error || 'Pas de réseau : envoi automatique au retour du réseau.'; }
+  else if(q){ text = '⏳ ' + q; cls = 'warn'; main = q + ' relevé(s) en attente d’envoi'; }
+  else { text = '☁ À jour'; cls = 'ok'; main = 'Carte commune à jour'; }
+  if(cloudOn() && state.cloud.lastSync && !sub)
+    sub = 'Dernière synchro : ' + new Date(state.cloud.lastSync).toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'})
+        + (state.cloud.error ? ' · ' + state.cloud.error : '');
+  el.textContent = text; el.className = 'gps ' + cls;
+  $('syncText').textContent = main; $('syncSub').textContent = sub;
+  $('syncBtn').classList.toggle('hidden', !cloudOn());
+  $('clearBtn').textContent = cloudOn() ? '↻ Recharger depuis le serveur' : 'Tout effacer';
+  $('clearBtn').className = 'btn' + (cloudOn() ? '' : ' danger');
+  $('dataHint').textContent = cloudOn()
+    ? 'Vos relevés sont envoyés automatiquement au serveur dès qu’il y a du réseau, et vous recevez ceux des autres testeurs. Sans réseau, ils sont gardés sur le téléphone et partent plus tard. Vous ne pouvez supprimer que vos propres relevés.'
+    : 'Les données restent sur ce téléphone. Pour les partager, exportez le fichier, envoyez-le (WhatsApp, e-mail…) et importez-le sur l’autre téléphone. Les dangers déjà présents ne sont pas dupliqués.';
+}
+
+function recordPoint(type, at){
+  const p = at || state.pos;
+  if(!p){ toast('En attente du GPS…'); return; }
+  const h = {id:uid(), type, geometry:{type:'Point', coordinates:[r6(p.lng), r6(p.lat)]}, createdAt:new Date().toISOString(),
+             accuracy: at ? null : Math.round(p.acc || 0), speedKmh: at ? null : Math.round(state.speed*3.6),
+             heading: (!at && state.heading !== null) ? Math.round(state.heading) : null, source: at ? 'carte' : 'terrain'};
+  let label = TYPES[type].label;
+  if(!at && p.acc > 50) label += ' (GPS imprécis : ±' + Math.round(p.acc) + ' m)';
+  saveOrConfirm(h, label);
+}
+function startSegment(type){
+  if(state.rec){ toast('Un tronçon est déjà en cours'); return; }
+  if(!state.pos){ toast('En attente du GPS…'); return; }
+  state.rec = {type, coords:[[r6(state.pos.lng), r6(state.pos.lat)]], accs:[state.pos.acc || 0], startedAt:new Date().toISOString()};
+  vibrate([60, 60, 60]); updateRecBanner(); drawRecLine();
+}
+function recAddPoint(p){
+  const c = state.rec.coords, last = ll(c[c.length-1]);
+  if(dist(last, p) >= 10){ c.push([r6(p.lng), r6(p.lat)]); state.rec.accs.push(p.acc || 0); drawRecLine(); }
+  updateRecBanner();
+}
+function endSegment(){
+  const r = state.rec; if(!r) return;
+  if(state.pos){ const last = ll(r.coords[r.coords.length-1]); if(dist(last, state.pos) >= 3) r.coords.push([r6(state.pos.lng), r6(state.pos.lat)]); }
+  state.rec = null; clearRecLine(); updateRecBanner();
+  if(r.coords.length < 2){ toast('Tronçon trop court : rien enregistré'); return; }
+  const len = Math.round(lineLength(r.coords));
+  const h = {id:uid(), type:r.type, geometry:{type:'LineString', coordinates:r.coords}, createdAt:r.startedAt, lengthM:len,
+             accuracy:Math.round(r.accs.reduce((a, b) => a+b, 0)/r.accs.length), source:'terrain'};
+  saveOrConfirm(h, TYPES[r.type].label);
+}
+function cancelSegment(){ state.rec = null; clearRecLine(); updateRecBanner(); toast('Tronçon annulé'); }
+function updateRecBanner(){
+  const b = $('recBanner');
+  if(!state.rec){ b.classList.add('hidden'); return; }
+  b.classList.remove('hidden');
+  $('recTitle').textContent = '● ' + TYPES[state.rec.type].label + ' — enregistrement';
+  $('recInfo').textContent = fmtDist(lineLength(state.rec.coords)) + ' relevés';
+}
+
+/* ---------- Alertes ---------- */
+function alertDistance(){ return Math.max(state.settings.minDist, state.speed * state.settings.anticip); }
+function beep(){
+  if(!state.settings.beep || !state.audio) return;
+  try{
+    const ctx = state.audio, t0 = ctx.currentTime;
+    [0, 0.22].forEach(off => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; o.type = 'square'; g.gain.value = 0.0001;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, t0+off); g.gain.exponentialRampToValueAtTime(0.25, t0+off+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+off+0.16);
+      o.start(t0+off); o.stop(t0+off+0.18);
+    });
+  }catch(e){}
+}
+function say(text){
+  if(!state.settings.voice || !('speechSynthesis' in window)) return;
+  try{ const u = new SpeechSynthesisUtterance(text); u.lang = 'fr-FR'; u.rate = 1.0; window.speechSynthesis.speak(u); }catch(e){}
+}
+function flash(){ const b = $('nextBox'); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+function warn(text){ beep(); vibrate([200, 100, 200]); say(text); flash(); }
+
+function checkAlerts(){
+  const p = state.pos; if(!p) return;
+  const AD = alertDistance(); let next = null;
+  for(const h of state.hazards){
+    const t = TYPES[h.type]; if(!t) continue;
+    const isSeg = h.geometry.type === 'LineString';
+    let d, target;
+    if(isSeg){ const n = nearestOnLine(p, h.geometry.coordinates); d = n.d; target = n.pt; }
+    else { target = ll(h.geometry.coordinates); d = dist(p, target); }
+    if(d > AD + 3000){ delete state.alertState[h.id]; continue; }
+
+    const st = state.alertState[h.id] || (state.alertState[h.id] = {});
+    const approaching = st.lastD !== undefined ? d < st.lastD - 0.5 : false;
+    let ahead;
+    if(d < 25) ahead = true;
+    else if(state.heading !== null && state.speed > 1) ahead = angleDiff(state.heading, bearing(p, target)) < 55;
+    else ahead = approaching;
+    st.lastD = d;
+
+    if(isSeg){
+      const inside = d < 35;
+      if(inside && !st.inside){
+        st.inside = true;
+        warn(st.warned ? 'Début de la ' + t.speak.replace(/^portion de route /, 'portion ') : 'Attention, ' + t.speak);
+        st.warned = true;
+      } else if(st.inside && d > 60){
+        st.inside = false; st.done = true;
+        if(t.fin) say(t.fin.charAt(0).toUpperCase() + t.fin.slice(1));
+      } else if(!st.inside && !st.warned && !st.done && ahead && d <= AD){
+        warn('Attention, ' + t.speak + ' dans ' + fmtDistSpeak(d)); st.warned = true;
+      }
+    } else if(!st.warned && ahead && d <= AD){
+      warn('Attention, ' + t.speak + ' dans ' + fmtDistSpeak(d)); st.warned = true;
+    }
+
+    if(d > AD + 300 && !st.inside) delete state.alertState[h.id];
+
+    const candidate = st.inside || (ahead && d < 5000);
+    if(candidate && (!next || (st.inside ? -1 : d) < next.sort)) next = {h, d, inside:!!st.inside, sort: st.inside ? -1 : d};
+  }
+  renderNext(next);
+}
+function renderNext(n){
+  if(!n){ $('nextType').textContent = 'Aucun danger devant'; $('nextDist').textContent = ''; return; }
+  const t = TYPES[n.h.type];
+  $('nextType').textContent = t.ico + ' ' + t.label;
+  $('nextDist').textContent = n.inside ? 'Vous y êtes' : fmtDist(n.d);
+}
+async function keepAwake(){ try{ if('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+function releaseAwake(){ try{ if(state.wakeLock) state.wakeLock.release(); }catch(e){} state.wakeLock = null; }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && state.driving) keepAwake(); });
+
+function toggleDrive(){
+  const b = $('driveBtn');
+  if(!state.driving){
+    try{ if(!state.audio){ const AC = window.AudioContext || window.webkitAudioContext; if(AC) state.audio = new AC(); } if(state.audio && state.audio.state === 'suspended') state.audio.resume(); }catch(e){}
+    state.driving = true; state.alertState = {};
+    b.textContent = '■ Arrêter les alertes'; b.classList.add('stop');
+    keepAwake(); say('Alertes activées'); beep();
+    if(!state.hazards.length) toast('Aucun danger en base : relevez-en ou importez un fichier.');
+    checkAlerts();
+  } else {
+    state.driving = false; releaseAwake();
+    try{ window.speechSynthesis.cancel(); }catch(e){}
+    b.textContent = '▶ Démarrer les alertes'; b.classList.remove('stop');
+    $('nextType').textContent = '—'; $('nextDist').textContent = '';
+  }
+}
+
+/* ---------- Simulation ---------- */
+function simSet(on){
+  const s = state.sim; s.active = on;
+  clearInterval(s.timer); s.timer = null; s.target = null;
+  if(simTargetMarker && map){ map.removeLayer(simTargetMarker); simTargetMarker = null; }
+  if(on){
+    s.pos = state.pos ? {lat:state.pos.lat, lng:state.pos.lng} : null;
+    s.timer = setInterval(simTick, 1000);
+    toast(s.pos ? 'Simulation : touchez la carte pour indiquer où rouler.' : 'Simulation : touchez la carte pour placer la voiture.');
+    showTab('drive');
+  } else { s.pos = null; toast('Simulation arrêtée — retour au GPS réel'); }
+}
+function simTick(){
+  const s = state.sim; if(!s.active || !s.pos) return;
+  let speed = 0, hd = null;
+  if(s.target){
+    const d = dist(s.pos, s.target), step = s.kmh/3.6; hd = bearing(s.pos, s.target);
+    if(d <= step){ s.pos = {lat:s.target.lat, lng:s.target.lng}; s.target = null; speed = d;
+      if(simTargetMarker && map){ map.removeLayer(simTargetMarker); simTargetMarker = null; } }
+    else { s.pos = destPoint(s.pos, hd, step); speed = step; }
+  }
+  onPosition({lat:s.pos.lat, lng:s.pos.lng, acc:5, speed, heading: speed > 0 ? hd : null, ts:Date.now()});
+}
+
+/* ---------- Clic sur la carte ---------- */
+let pickAt = null;
+function onMapClick(e){
+  const p = {lat:e.latlng.lat, lng:e.latlng.lng};
+  if(state.addMode){ openPicker(p); return; }
+  if(state.sim.active){
+    if(!state.sim.pos){ state.sim.pos = p; state.headingRef = null; state.heading = null; simTick(); toast('Voiture placée. Touchez un autre point pour rouler.'); }
+    else { state.sim.target = p;
+      if(simTargetMarker) simTargetMarker.setLatLng([p.lat, p.lng]);
+      else simTargetMarker = L.circleMarker([p.lat, p.lng], {radius:6, color:'#f59e0b', weight:3, fill:false}).addTo(map); }
+  }
+}
+function openPicker(p){
+  pickAt = p; const g = $('pickerGrid'); g.innerHTML = '';
+  for(const [k, t] of Object.entries(TYPES)){
+    if(t.kind !== 'point') continue;
+    const b = document.createElement('button'); b.className = 'tbtn'; b.style.background = t.color;
+    b.innerHTML = '<span class="ico"></span><span class="lab"></span>';
+    b.querySelector('.ico').textContent = t.ico; b.querySelector('.lab').textContent = t.label;
+    b.onclick = () => { recordPoint(k, pickAt); closePicker(); };
+    g.appendChild(b);
+  }
+  $('picker').classList.remove('hidden');
+}
+function closePicker(){ $('picker').classList.add('hidden'); pickAt = null; }
+
+/* ---------- Glossaire ---------- */
+const GLOSSARY = {
+  dos_dane: ["Bosse aménagée en travers de la route pour obliger les véhicules à ralentir (on dit aussi ralentisseur). On en trouve à l'entrée des villages, près des écoles, des marchés et des postes de contrôle. Certains sont posés par les habitants, sans panneau ni peinture : ce sont les plus dangereux.",
+             "Relevez-le comme un point, au moment où la voiture passe dessus."],
+  nid_poule: ["Trou dans la chaussée, causé par l'usure du goudron et par l'eau. Il peut crever un pneu, tordre une jante, abîmer la suspension, ou faire perdre le contrôle si on l'évite brusquement.",
+              "Un trou isolé = point. S'il y en a beaucoup à la suite, utilisez plutôt « Portion dégradée »."],
+  portion_degradee: ["Partie de route en mauvais état sur une certaine longueur : nids-de-poule en série, goudron arraché, chaussée qui devient piste, bords de route effondrés.",
+                     "Relevez-la comme un tronçon : début de la zone → « Terminer » à la fin."],
+  betail: ["Endroit où des troupeaux (bœufs, moutons, chèvres, ânes) traversent souvent la route : près des villages, des points d'eau ou des marchés à bétail. Très dangereux la nuit, car les animaux sont peu visibles.",
+           "Relevez-la comme un point, à l'endroit habituel de passage."],
+  deviation: ["Travaux qui obligent à quitter la route goudronnée ou à rouler sur une voie réduite, souvent mal balisés. C'est un danger temporaire.",
+              "Relevez-la comme un tronçon. Supprimez-la quand les travaux sont terminés."],
+  pont_etroit: ["Pont ou radier (passage bas sur un cours d'eau) où deux véhicules ne peuvent pas se croiser facilement. Il faut ralentir et parfois céder le passage.",
+                "Relevez-le comme un point, à l'entrée du pont."],
+  zone_inondable: ["Partie de route qui se couvre d'eau pendant l'hivernage. On ne voit pas la profondeur, et la chaussée peut être abîmée sous l'eau.",
+                   "Relevez-la comme un tronçon, même en saison sèche si vous connaissez la zone."]
+};
+function buildGlossary(){
+  const box = $('glossary');
+  for(const [k, t] of Object.entries(TYPES)){
+    const g = GLOSSARY[k] || ['', ''];
+    const card = document.createElement('div'); card.className = 'gcard'; card.style.borderLeftColor = t.color;
+    card.innerHTML = '<div class="gico"></div><div><div><span class="gt"></span><span class="gk"></span></div><p></p><p class="tip"></p></div>';
+    card.querySelector('.gico').textContent = t.ico;
+    card.querySelector('.gt').textContent = t.label;
+    card.querySelector('.gk').textContent = t.kind === 'point' ? 'point' : 'tronçon';
+    card.querySelectorAll('p')[0].textContent = g[0];
+    card.querySelectorAll('p')[1].textContent = '👉 ' + g[1];
+    box.appendChild(card);
+  }
+}
+
+/* ---------- Données ---------- */
+function toGeoJSON(){
+  return {type:'FeatureCollection', features: state.hazards.map(h => ({
+    type:'Feature', id:h.id, geometry:h.geometry,
+    properties:{id:h.id, type:h.type, label:(TYPES[h.type] || {}).label, createdAt:h.createdAt, accuracy:h.accuracy ?? null,
+                speedKmh:h.speedKmh ?? null, heading:h.heading ?? null, lengthM:h.lengthM ?? null, source:h.source || null,
+                confirmations:h.confirmations || 1, lastSeen:h.lastSeen || h.createdAt || null}
+  }))};
+}
+function exportGeo(){
+  if(!state.hazards.length){ toast('Rien à exporter'); return; }
+  try{
+    const blob = new Blob([JSON.stringify(toGeoJSON(), null, 1)], {type:'application/geo+json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'routealerte-' + new Date().toISOString().slice(0, 10) + '.geojson';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }catch(e){ toast("Export impossible ici : utilisez « Copier »"); }
+}
+async function copyGeo(){
+  try{ await navigator.clipboard.writeText(JSON.stringify(toGeoJSON())); toast('Données copiées'); }
+  catch(e){ toast('Copie refusée par le navigateur'); }
+}
+function importGeo(file){
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const fc = JSON.parse(rd.result); const feats = Array.isArray(fc.features) ? fc.features : [];
+      const ids = new Set(state.hazards.map(h => h.id)); let added = 0, skipped = 0, merged = 0;
+      for(const f of feats){
+        const pr = f.properties || {}, g = f.geometry || {};
+        const id = String(f.id || pr.id || uid());
+        const okGeom = (g.type === 'Point' && Array.isArray(g.coordinates) && g.coordinates.length >= 2) ||
+                       (g.type === 'LineString' && Array.isArray(g.coordinates) && g.coordinates.length >= 2);
+        if(!TYPES[pr.type] || !okGeom || ids.has(id)){ skipped++; continue; }
+        const geometry = g.type === 'Point' ? {type:'Point', coordinates:[+g.coordinates[0], +g.coordinates[1]]}
+                                            : {type:'LineString', coordinates:g.coordinates.map(c => [+c[0], +c[1]])};
+        const h = {id, type:pr.type, geometry, createdAt:pr.createdAt || new Date().toISOString(),
+          accuracy:pr.accuracy ?? null, speedKmh:pr.speedKmh ?? null, heading:pr.heading ?? null,
+          lengthM: g.type === 'LineString' ? Math.round(lineLength(geometry.coordinates)) : null, source:pr.source || 'import',
+          confirmations: Math.max(1, +pr.confirmations || 1), lastSeen: pr.lastSeen || pr.createdAt || null};
+        if(cloudOn()){ // envoyé au serveur, qui fusionne lui-même les doublons
+          const res = applyLocal(h); res.isNew ? added++ : merged++;
+          state.queue.push(reportOp(h)); ids.add(id); continue;
+        }
+        const dup = findDuplicate(h);
+        if(dup){ // même danger relevé par un autre testeur : on fusionne
+          const n = h.confirmations; for(let i = 0; i < n; i++) confirmHazard(dup.ex, h);
+          merged++; ids.add(id); continue;
+        }
+        state.hazards.push(h); ids.add(id); added++;
+      }
+      persist(); if(cloudOn()){ saveQueue(); scheduleSync(); }
+      toast(added + ' nouveau(x)' + (merged ? ', ' + merged + ' fusionné(s) avec des dangers connus' : '') + (skipped ? ', ' + skipped + ' ignoré(s)' : ''));
+    }catch(e){ toast('Fichier illisible : attendu un GeoJSON exporté par RouteAlerte'); }
+  };
+  rd.readAsText(file);
+}
+let clearArmed = false, clearTimer = null;
+function clearAll(){
+  const b = $('clearBtn');
+  if(cloudOn()){ // en mode serveur : on recharge la carte commune (les relevés en attente sont gardés)
+    state.hazards = []; persist(); sync(true); return;
+  }
+  if(!clearArmed){ clearArmed = true; b.textContent = 'Confirmer : tout effacer ?';
+    clearTimer = setTimeout(() => { clearArmed = false; b.textContent = 'Tout effacer'; }, 4000); return; }
+  clearTimeout(clearTimer); clearArmed = false; b.textContent = 'Tout effacer';
+  state.hazards = []; persist(); toast('Toutes les données ont été effacées');
+}
+function renderData(){
+  const counts = {}; for(const h of state.hazards) counts[h.type] = (counts[h.type] || 0) + 1;
+  const st = $('stats'); st.innerHTML = '';
+  for(const [k, t] of Object.entries(TYPES)){
+    const c = document.createElement('span'); c.className = 'chip';
+    c.innerHTML = '<span class="dot"></span><span></span>';
+    c.querySelector('.dot').style.background = t.color;
+    c.lastChild.textContent = t.label + ' : ' + (counts[k] || 0);
+    st.appendChild(c);
+  }
+  const ul = $('list'); ul.innerHTML = '';
+  const items = state.hazards.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  if(!items.length){ const li = document.createElement('li'); li.textContent = 'Aucun danger enregistré pour l’instant.'; ul.appendChild(li); return; }
+  for(const h of items){
+    const t = TYPES[h.type] || {label:h.type, ico:'•', color:'#888'};
+    const li = document.createElement('li');
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = t.color; dot.style.width = dot.style.height = '14px';
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = t.ico + ' ' + t.label + (h.geometry.type === 'LineString' ? ' — ' + fmtDist(h.lengthM || lineLength(h.geometry.coordinates)) : '');
+    const sm = document.createElement('small');
+    const dt = h.createdAt ? new Date(h.createdAt) : null;
+    sm.textContent = (dt ? dt.toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'}) : '') +
+                     (h.accuracy ? ' · ±' + h.accuracy + ' m' : '') + (h.source ? ' · ' + h.source : '') +
+                     ((h.confirmations || 1) > 1 ? ' · ✓ ' + h.confirmations + ' relevés' : '') +
+                     (h.lastSeen && h.lastSeen !== h.createdAt ? ' · revu le ' + new Date(h.lastSeen).toLocaleDateString('fr-FR') : '') +
+                     (cloudOn() && h.pending ? ' · ⏳ en attente d’envoi' : '') +
+                     (cloudOn() && !h.pending && h.createdBy && h.createdBy === state.cloud.userId ? ' · mon relevé' : '');
+    meta.appendChild(sm);
+    const see = document.createElement('button'); see.textContent = 'Voir';
+    see.onclick = () => {
+      if(!map) return; state.follow = false; $('recenter').classList.remove('hidden');
+      if(h.geometry.type === 'Point') map.setView([h.geometry.coordinates[1], h.geometry.coordinates[0]], 17);
+      else map.fitBounds(h.geometry.coordinates.map(c => [c[1], c[0]]), {padding:[20, 20]});
+      window.scrollTo({top:0, behavior:'smooth'});
+    };
+    li.append(dot, meta, see);
+    if(canDelete(h)){
+      const del = document.createElement('button'); del.textContent = 'Suppr.';
+      del.onclick = () => {
+        const wasQueued = state.queue.findIndex(o => o.op === 'report' && o.id === h.id);
+        const queuedOp = wasQueued >= 0 ? state.queue[wasQueued] : null;
+        if(!userDelete(h)) return;
+        toast(t.label + ' supprimé', {label:'Annuler', fn:() => {
+          // annule la suppression : retire l'ordre de suppression ou remet le relevé en file
+          const di = state.queue.findIndex(o => o.op === 'delete' && o.id === h.id);
+          if(di < 0 && !queuedOp && cloudOn()){ toast('Déjà supprimé sur le serveur'); return; }
+          if(di >= 0){ state.queue.splice(di, 1); saveQueue(); }
+          if(queuedOp){ state.queue.push(queuedOp); saveQueue(); scheduleSync(); }
+          state.hazards.push(h); persist();
+        }});
+      };
+      li.append(del);
+    }
+    ul.appendChild(li);
+  }
+}
+
+/* ---------- Onglets et liaisons ---------- */
+function showTab(name){
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  ['rec', 'drive', 'data', 'help'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== name));
+  if(map) setTimeout(() => map.invalidateSize(), 50);
+}
+function buildTypeGrid(){
+  const g = $('typeGrid');
+  for(const [k, t] of Object.entries(TYPES)){
+    const b = document.createElement('button'); b.className = 'tbtn'; b.style.background = t.color;
+    b.innerHTML = '<span class="ico"></span><span class="lab"></span><span class="kind"></span>';
+    b.querySelector('.ico').textContent = t.ico; b.querySelector('.lab').textContent = t.label;
+    b.querySelector('.kind').textContent = t.kind === 'point' ? 'point' : 'tronçon ▶';
+    b.onclick = () => t.kind === 'point' ? recordPoint(k) : startSegment(k);
+    g.appendChild(b);
+  }
+}
+function bindSettings(){
+  const s = state.settings;
+  $('setAnticip').value = String(s.anticip); $('setMinDist').value = String(s.minDist);
+  $('setVoice').checked = !!s.voice; $('setBeep').checked = !!s.beep;
+  const upd = () => { s.anticip = +$('setAnticip').value; s.minDist = +$('setMinDist').value;
+                      s.voice = $('setVoice').checked; s.beep = $('setBeep').checked; save(LS_SET, s); };
+  ['setAnticip', 'setMinDist', 'setVoice', 'setBeep'].forEach(id => $(id).addEventListener('change', upd));
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$('recEnd').onclick = endSegment;
+$('recCancel').onclick = cancelSegment;
+$('addMode').onchange = e => { state.addMode = e.target.checked; if(state.addMode) toast('Touchez la carte à l’endroit du danger'); };
+$('driveBtn').onclick = toggleDrive;
+$('simOn').onchange = e => simSet(e.target.checked);
+$('simKmh').onchange = e => { state.sim.kmh = +e.target.value; };
+$('expBtn').onclick = exportGeo;
+$('copyBtn').onclick = copyGeo;
+$('impBtn').onclick = () => $('impFile').click();
+$('impFile').onchange = e => { const f = e.target.files && e.target.files[0]; if(f) importGeo(f); e.target.value = ''; };
+$('clearBtn').onclick = clearAll;
+$('pickerCancel').onclick = closePicker;
+$('syncBtn').onclick = () => sync(true);
+window.addEventListener('online', () => { state.cloud.online = true; updateSyncUI(); sync(false); });
+window.addEventListener('offline', () => { state.cloud.online = false; updateSyncUI(); });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') sync(false); });
+setInterval(() => sync(false), 60000);   // carte commune rafraîchie chaque minute
+$('safetyOk').onclick = () => { $('safety').classList.add('hidden'); save(LS_SAFE, true); };
+
+buildTypeGrid(); buildGlossary(); bindSettings(); initMap(); renderData(); updateCount(); updateSyncUI();
+sync(false);
+if(!load(LS_SAFE, false)) $('safety').classList.remove('hidden');
+startGPS();
+</script>
+</body>
+</html>
